@@ -10,16 +10,11 @@ public class ShipEngine : MonoBehaviour
     public float force; // Force for balancing the ship
 
     public Transform path; // The transform of the path the AI follows 
-    private List<Transform> nodes; //all positions on the path
-    private int currentNode = 0; //current position of AI on path
-    
+
     public float speed; // Speed force acting on the AI
     public float brake; // Braking power acting on the AI
 
     public bool isBraking; // Bool to dictate whether the AI is braking or not
-
-    float eulerAngZ;
-    Vector3 currentRotation;
 
 
     // Rigidbody component of the AI
@@ -29,13 +24,19 @@ public class ShipEngine : MonoBehaviour
     public Transform[] springs;
 
     public float hoverHeight; // Desired hovering height.
-    float hoverForce = 20.0f; //The force applied per unit of distance below the desired height.
-    
-    float hoverDamp = 0.2f; // The amount that the lifting force is reduced per unit of upward speed.
-                            // This damping tends to stop the object from bouncing after passing over
-                            // something.
+    private int currentNode = 0; //current position of AI on path
+    Vector3 currentRotation;
 
-                            //Start is called before the first frame update
+    float eulerAngZ;
+
+    float hoverDamp = 0.2f; // The amount that the lifting force is reduced per unit of upward speed.
+    float hoverForce = 20.0f; //The force applied per unit of distance below the desired height.
+
+    private List<Transform> nodes; //all positions on the path
+    // This damping tends to stop the object from bouncing after passing over
+    // something.
+
+    //Start is called before the first frame update
     //As soon as the scene starts, follow path
     void Start()
     {
@@ -63,11 +64,24 @@ public class ShipEngine : MonoBehaviour
         HoverShip(); //(Aesthetic purpose... for now) - allows the AI ship to hover
     }
 
+    // When the AI collides with a node, the braking bool is true
+    private void OnTriggerEnter(Collider Node)
+    {
+         isBraking = true;
+    }
+
+    // When the AI leaves the collider of the node, the braking bool is false
+    private void OnTriggerExit(Collider Node)
+    {
+         isBraking = false;
+    }
+
     private void ApplySteer()
     {
         Vector3 relativeVector = transform.InverseTransformPoint(nodes[currentNode].position); //points to current node
         float newSteer = (relativeVector.x / relativeVector.magnitude) * maxSteerAngle; //length of Vector
-
+        isBraking = newSteer > 0.5f || newSteer < -0.5f;
+        
         rb.AddTorque(transform.TransformDirection(Vector3.up) * newSteer * turningSpeed); // Applies force to turn the AI on the Y-axis in accordance to the current node
         rb.AddTorque(transform.TransformDirection(Vector3.right) * (newSteer * 0.4f)); // Applies force to turn the AI on the Z-axis in accordance to the current node
     }
@@ -92,21 +106,9 @@ public class ShipEngine : MonoBehaviour
             // If the curreent node is the last node in the list restart 
             if(currentNode == nodes.Count -1) {
                 currentNode = 0;
-        } else
-            currentNode++; //move to next node/position
+            } else
+                currentNode++; //move to next node/position
         }
-    }
-
-    // When the AI collides with a node, the braking bool is true
-    private void OnTriggerEnter(Collider Node)
-    {
-         isBraking = true;
-    }
-
-    // When the AI leaves the collider of the node, the braking bool is false
-    private void OnTriggerExit(Collider Node)
-    {
-         isBraking = false;
     }
 
     private void HoverShip()
@@ -119,6 +121,7 @@ public class ShipEngine : MonoBehaviour
             // Cast a ray straight downwards.
             if (Physics.Raycast(downRay, out hit))
             {
+                
                 // The "error" in height is the difference between the desired height
                 // and the height measured by the raycast distance.
                 float hoverError = hoverHeight - hit.distance;
@@ -148,6 +151,5 @@ public class ShipEngine : MonoBehaviour
 
         transform.eulerAngles = currentRotation;
     }
-
 }
 

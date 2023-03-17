@@ -1,155 +1,164 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class ShipEngine : MonoBehaviour
 {
-    [SerializeField] public float distanceToggle; //checks whether the AI should start braking or not
-    public float turningSpeed; // Speed in which the AI turns on the Y-axis
-    public float maxSteerAngle; //The maximum angle the AI can rotate/steer
-    public float force; // Force for balancing the ship
+    #region Debug
 
-    public Transform path; // The transform of the path the AI follows 
+    /* Debug */
+    [FormerlySerializedAs("DEBUG_newSteer")] [Header("Debug Variables")] 
+    
+    public float debugNewSteer = 0.0f;
+    public float debugCurrentNode = 0.0f;
 
-    public float speed; // Speed force acting on the AI
-    public float brake; // Braking power acting on the AI
+    [Space(10)]
 
-    public bool isBraking; // Bool to dictate whether the AI is braking or not
+    #endregion
 
+    public Transform pathToFollow;
 
-    // Rigidbody component of the AI
-    public Rigidbody rb;
+    [SerializeField] private Rigidbody rigidBody;
 
-    //Hover
+    #region Driving Parameters
+
+    /* Driving Parameters */
+    [Header("Driving Parameters Variables")] [SerializeField]
+    private float distanceToggle;
+
+    [SerializeField] private float turningSpeed;
+    [SerializeField] private float maxSteerAngle;
+    [SerializeField] private float force;
+
+    [Space(10)]
+
+    #endregion
+
+    #region Acceleration and Braking
+
+    /* Acceleration and Braking */
+    [Header("Acceleration and Braking Variables")]
+    [SerializeField]
+    private float acceleration;
+
+    [SerializeField] private float braking;
+    [SerializeField] private float brakeThreshold;
+    [SerializeField] private bool isBraking = false;
+
+    [Space(10)]
+
+    #endregion
+
+    #region Hover
+
+    /* Hover */
+    [SerializeField]
     public Transform[] springs;
 
-    public float hoverHeight; // Desired hovering height.
-    private int currentNode = 0; //current position of AI on path
-    Vector3 currentRotation;
+    [SerializeField] private float desiredHoverHeight;
 
-    float eulerAngZ;
+    float hoverDamp = 0.2f; // Amount that the lifting force is reduced per unit of upward speed.
+    float hoverForce = 20.0f; // Force applied per unit of distance below the desired height.
 
-    float hoverDamp = 0.2f; // The amount that the lifting force is reduced per unit of upward speed.
-    float hoverForce = 20.0f; //The force applied per unit of distance below the desired height.
+    #endregion
 
-    private List<Transform> nodes; //all positions on the path
-    // This damping tends to stop the object from bouncing after passing over
-    // something.
+    #region Path
 
-    //Start is called before the first frame update
-    //As soon as the scene starts, follow path
+    private int _currentNode = 0;
+    private Vector3 _currentRotation;
+    private List<Transform> nodes;
+
+    #endregion
+
     void Start()
     {
-        Transform[] pathTransforms = path.GetComponentsInChildren<Transform>();
-        nodes = new List<Transform>(); //ensures it is a new empty list at the beginning
-
-        for (int i = 0; i < pathTransforms.Length; i++) //loops through each transform in pathTransforms
+        Transform[] pathTransforms = pathToFollow.GetComponentsInChildren<Transform>();
+        nodes = new List<Transform>();
+        foreach (Transform child in pathTransforms)
         {
-            if (pathTransforms[i] != path.transform) //check to see the relation of the transform
+            if (child != pathToFollow.transform)
             {
-                nodes.Add(pathTransforms[i]); //add to list if not
+                nodes.Add(child);
             }
         }
-
-        isBraking = false;
-       
     }
 
     void FixedUpdate()
     {
-        ApplySteer(); //rotates the AI to face the next node on the path
-        Balance(); // Balance the AI on the Z-Axis
-        Drive(); //moves the AI forward
-        CheckDistance(); //checks distance between the AI and nodes to    
-        HoverShip(); //(Aesthetic purpose... for now) - allows the AI ship to hover
-    }
-
-    // When the AI collides with a node, the braking bool is true
-    private void OnTriggerEnter(Collider Node)
-    {
-         isBraking = true;
-    }
-
-    // When the AI leaves the collider of the node, the braking bool is false
-    private void OnTriggerExit(Collider Node)
-    {
-         isBraking = false;
+        ApplySteer();
+        Balance();
+        Drive();
+        CheckDistanceToNextNode();
+        HoverShip();
     }
 
     private void ApplySteer()
     {
-        Vector3 relativeVector = transform.InverseTransformPoint(nodes[currentNode].position); //points to current node
-        float newSteer = (relativeVector.x / relativeVector.magnitude) * maxSteerAngle; //length of Vector
-        isBraking = newSteer > 0.5f || newSteer < -0.5f;
-        
-        rb.AddTorque(transform.TransformDirection(Vector3.up) * newSteer * turningSpeed); // Applies force to turn the AI on the Y-axis in accordance to the current node
-        rb.AddTorque(transform.TransformDirection(Vector3.right) * (newSteer * 0.4f)); // Applies force to turn the AI on the Z-axis in accordance to the current node
+        Vector3 relativeVector = transform.InverseTransformPoint(nodes[_currentNode].position);
+        float newSteer = (relativeVector.x / relativeVector.magnitude) * maxSteerAngle;
+
+#if UNITY_EDITOR
+        debugNewSteer = newSteer;
+#endif
+
+        isBraking = newSteer > brakeThreshold || newSteer < -brakeThreshold;
+
+        rigidBody.AddTorque(transform.TransformDirection(Vector3.up) * newSteer * turningSpeed);
+        rigidBody.AddTorque(transform.TransformDirection(Vector3.right) * (newSteer * 0.4f));
     }
 
     private void Drive()
     {
         if (isBraking)
         {
-            rb.drag = brake;
+            rigidBody.drag = braking;
         }
-        
-        if(!isBraking)
+        else
         {
-            rb.AddForce(transform.TransformDirection(Vector3.forward) * speed);
+            rigidBody.AddForce(transform.TransformDirection(Vector3.forward) * acceleration, ForceMode.Acceleration);
         }
     }
 
-    private void CheckDistance() //checks to see how far away te AI is from the next node
-    { 
-        if (Vector3.Distance(transform.position, nodes[currentNode].position) < distanceToggle)
+    private void CheckDistanceToNextNode()
+    {
+        if (Vector3.Distance(transform.position, nodes[_currentNode].position) < distanceToggle)
         {
-            // If the curreent node is the last node in the list restart 
-            if(currentNode == nodes.Count -1) {
-                currentNode = 0;
-            } else
-                currentNode++; //move to next node/position
+            _currentNode = _currentNode == nodes.Count - 1 ? 0 : _currentNode + 1;
+#if UNITY_EDITOR
+            debugCurrentNode = _currentNode;
+#endif
         }
     }
 
     private void HoverShip()
     {
-        foreach (Transform spring in springs)
+        RaycastHit hit;
+        Ray downRay = new Ray(transform.position, -Vector3.up);
+        // Cast a ray straight downwards.
+        if (Physics.Raycast(downRay, out hit))
         {
-            RaycastHit hit;
-            Ray downRay = new Ray(transform.position, -Vector3.up);
+            // The "error" in height is the difference between the desired height
+            // and the height measured by the raycast distance.
+            float hoverError = desiredHoverHeight - hit.distance;
 
-            // Cast a ray straight downwards.
-            if (Physics.Raycast(downRay, out hit))
+            // Only apply a lifting force if the object is too low (ie, let
+            // gravity pull it downward if it is too high).
+            if (hoverError > 0)
             {
-                
-                // The "error" in height is the difference between the desired height
-                // and the height measured by the raycast distance.
-                float hoverError = hoverHeight - hit.distance;
-
-                // Only apply a lifting force if the object is too low (ie, let
-                // gravity pull it downward if it is too high).
-                if (hoverError > 0)
-                {
-                    // Subtract the damping from the lifting force and apply it to
-                    // the rigidbody.
-                    float upwardSpeed = rb.velocity.y;
-                    float lift = hoverError * hoverForce - upwardSpeed * hoverDamp;
-                    rb.AddForce(lift * Vector3.up);
-                }
+                // Subtract the damping from the lifting force and apply it to
+                // the rigidbody.
+                float upwardSpeed = rigidBody.velocity.y;
+                float lift = hoverError * hoverForce - upwardSpeed * hoverDamp;
+                rigidBody.AddForce(lift * Vector3.up);
             }
         }
     }
 
-    public void Balance()
+    private void Balance()
     {
-        currentRotation = transform.eulerAngles;
-
-
-        // Balancing for when the Ai ship is leaning over 
-        currentRotation.z = Mathf.Lerp(currentRotation.z, 0, force);
-        currentRotation.x= Mathf.Lerp(currentRotation.x, 0, force);
-
-        transform.eulerAngles = currentRotation;
+        _currentRotation = transform.eulerAngles;
+        _currentRotation.z = Mathf.Lerp(_currentRotation.z, 0, force);
+        _currentRotation.x = Mathf.Lerp(_currentRotation.x, 0, force);
+        transform.eulerAngles = _currentRotation;
     }
 }
-

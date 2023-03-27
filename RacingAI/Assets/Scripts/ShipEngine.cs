@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
+using UnityEngine.WSA;
 
 public class ShipEngine : MonoBehaviour
 {
@@ -15,9 +16,7 @@ public class ShipEngine : MonoBehaviour
     [Space(10)]
 
     #endregion
-
-    public Transform pathToFollow;
-
+    
     [SerializeField] private Rigidbody rigidBody;
 
     #region Driving Parameters
@@ -29,6 +28,7 @@ public class ShipEngine : MonoBehaviour
     [SerializeField] private float turningSpeed;
     [SerializeField] private float maxSteerAngle;
     [SerializeField] private float force;
+    [SerializeField] private float maxTiltAngle;
 
     [Space(10)]
 
@@ -58,27 +58,29 @@ public class ShipEngine : MonoBehaviour
     [SerializeField] private float desiredHoverHeight;
 
     float hoverDamp = 0.2f; // Amount that the lifting force is reduced per unit of upward speed.
-    float hoverForce = 20.0f; // Force applied per unit of distance below the desired height.
+    float hoverForce = 30.0f; // Force applied per unit of distance below the desired height.
 
     #endregion
 
     #region Path
-
+    
+    public Transform pathToFollow;
+    
     private int _currentNode = 0;
     private Vector3 _currentRotation;
-    private List<Transform> nodes;
+    private List<Transform> _nodes;
 
     #endregion
 
     void Start()
     {
         Transform[] pathTransforms = pathToFollow.GetComponentsInChildren<Transform>();
-        nodes = new List<Transform>();
+        _nodes = new List<Transform>();
         foreach (Transform child in pathTransforms)
         {
             if (child != pathToFollow.transform)
             {
-                nodes.Add(child);
+                _nodes.Add(child);
             }
         }
     }
@@ -86,15 +88,16 @@ public class ShipEngine : MonoBehaviour
     void FixedUpdate()
     {
         ApplySteer();
-        Balance();
         Drive();
         CheckDistanceToNextNode();
         HoverShip();
+        Balance();
+        Tilt();
     }
 
     private void ApplySteer()
     {
-        Vector3 relativeVector = transform.InverseTransformPoint(nodes[_currentNode].position);
+        Vector3 relativeVector = transform.InverseTransformPoint(_nodes[_currentNode].position);
         float newSteer = (relativeVector.x / relativeVector.magnitude) * maxSteerAngle;
 
 #if UNITY_EDITOR
@@ -121,9 +124,9 @@ public class ShipEngine : MonoBehaviour
 
     private void CheckDistanceToNextNode()
     {
-        if (Vector3.Distance(transform.position, nodes[_currentNode].position) < distanceToggle)
+        if (Vector3.Distance(transform.position, _nodes[_currentNode].position) < distanceToggle)
         {
-            _currentNode = _currentNode == nodes.Count - 1 ? 0 : _currentNode + 1;
+            _currentNode = _currentNode == _nodes.Count - 1 ? 0 : _currentNode + 1;
 #if UNITY_EDITOR
             debugCurrentNode = _currentNode;
 #endif
@@ -160,5 +163,10 @@ public class ShipEngine : MonoBehaviour
         _currentRotation.z = Mathf.Lerp(_currentRotation.z, 0, force);
         _currentRotation.x = Mathf.Lerp(_currentRotation.x, 0, force);
         transform.eulerAngles = _currentRotation;
+    }
+
+    private void Tilt()
+    {
+        
     }
 }
